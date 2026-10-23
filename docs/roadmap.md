@@ -253,3 +253,13 @@ Last reviewed: 2026-10-12
 - TASK-20261017-UI07已完成。运行提交 `c68206ccd977ba6c8770bc6753bd37f2fbc86a38` 已推送隔离分支 `codex/storefront-mobile-density-20261017`；独立SOURCE_GO/PROMOTE_GO后，同一构建 `dpl_B8UXo2AiVFfNyrqvDThCSAwNLJGw` 已推广至www/apex，apex307到www。回退保留BTL/4096f92。
 - 落实7张批准预览，仅调整<768px前台，所有商品区横向紧凑卡，正式预售卡191px、同卡降低45.8%；购物/结算/账户/详情/售后/申请/登录/帮助及局部状态统一压缩。主目录其它未提交运行源码不纳入发布，无API/DB/env/后台/Logo/交易协议改动或migration依赖。
 - 24+60测试、lint、本地/远端build、210手机几何及30桌面对照通过；473上传源hash一致。候选和正式各12+30 HTTP通过，实际三语及手机/桌面、账户/购物/结算只读布局已核对，短时error/fatal为空，独立RELEASE_VERIFIED。真实业务写及物理iPhone键盘未做E2E。报告 `docs/audits/2026-10-17-storefront-mobile-density-release.md`，证据 `outputs/storefront-mobile-density/2026-10-17/`，任务转done。
+
+
+## 2026-10-23：售后现金／钱包简化（本地验收完成，待生产迁移批准）
+
+- 用户确认：直接批准退货后可先退款；现金和钱包二选一；有退款批准权限的员工可完成；默认原单可退全额、可少退，一条售后一次结清；支持有原因的“无需退回”。
+- 实现在项目内工作树 `.codex-worktrees/rma-simple-refund-20261023` / `codex/rma-simple-refund-20261023`，基于最近已上线钱包修复82043e8／17a6b0c；未覆盖主目录既有修改。主入口改为“办理退款”，后台事务核价／记账／审计，收货和库存独立；次要记录折叠，现金和钱包在客户记录与财务中明确区分。
+- 新migration `20261023195133_simplify_rma_refunds_and_customer_wallets.sql`，SHA256 `f6aef98e822cb5404c84e57fbc48c2e6fe4ff2ee366af2251b93aabfb80ab45f`：客户创建同步EUR0钱包；补缺失钱包（只读当时38客户／3钱包／35缺失）；新增统一退款／免退回函数，保留旧审批和库存路径。先退款不伪造收货／QC，不回补库存；旧待批钱包请求在统一退款事务内终止，既有余额和流水不改。
+- 验证：177项售后／钱包／财务合同、24项storefront，全量lint、build、diff检查通过；隔离PostgreSQL17应用119条migration，零余额补齐不改已有余额、税额尾差、权限、失败回滚、收货／免退回／关闭及真实双连接同key／现金钱包竞争／旧批准竞争通过。390／1440中意英真实React＋模拟API验证通过，查看截图确认布局；非物理Safari或生产员工交易E2E。证据位于该工作树 `outputs/rma-simple/2026-10-23/`。
+- 目标已核对PartsPro-V4／yiuxrjqexlfjtxxrkqvi；linked migration list无remote-only，dry-run仅本条。迁移含零余额回填，必须按AGENTS安全门取得**本次db push**明确批准；本轮未真实push、未发布、未执行截图售后退款。
+- 回退：先回退代码停止新入口，保留新增字段、零余额钱包和资金证据；已经完成的现金／钱包退款不能由代码回退撤销，只能另行审批补偿。后续先重新核对list／dry-run与文件hash，批准后应用、读回核验，再独立发布。

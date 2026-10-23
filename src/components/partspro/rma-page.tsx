@@ -1393,6 +1393,7 @@ function RmaRequestCard({
   shippingNotice?: ShippingNotice;
   t: StorefrontTranslator;
 }) {
+  const { locale } = useI18n();
   return (
     <article
       id={`rma-request-${request.id}`}
@@ -1427,9 +1428,9 @@ function RmaRequestCard({
       ) : null}
       {typeof request.refundAmount === "number" && request.refundAmount > 0 ? (
         <div className="space-y-1 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-          <p className="font-bold">{tx(t, "storefront.rma.walletCredited", "Accreditato nel saldo PartsPro")}: {formatEuro(request.refundAmount)}</p>
+          <p className="font-bold">{request.refundMethod === "cash" ? (locale === "zh-CN" ? "现金退款已支付" : locale.startsWith("en") ? "Cash refund paid" : "Rimborso in contanti pagato") : tx(t, "storefront.rma.walletCredited", "Accreditato nel saldo PartsPro")}: {formatEuro(request.refundAmount)}</p>
           {request.refundedAt ? <p>{formatCustomerDateTime(request.refundedAt)}</p> : null}
-          <Link className="underline" href="/account?section=wallet">{tx(t, "storefront.rma.viewWallet", "Controlla i movimenti del saldo")}</Link>
+          {request.refundMethod !== "cash" ? <Link className="underline" href="/account?section=wallet">{tx(t, "storefront.rma.viewWallet", "Controlla i movimenti del saldo")}</Link> : null}
         </div>
       ) : null}
       {request.returnToCustomerTracking ? <p className="text-sm">{tx(t, "storefront.rma.returnedTracking", "Tracking restituzione al cliente")}: {request.returnToCustomerTracking}</p> : null}

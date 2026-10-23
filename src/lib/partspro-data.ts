@@ -46,6 +46,7 @@ export type RmaStatus =
 export type RmaResolutionAction =
   | "replacement"
   | "refund_wallet"
+  | "refund_cash"
   | "credit_note"
   | "no_fault"
   | "scrap"
@@ -190,6 +191,9 @@ export type OrderSummary = {
 };
 
 export type RmaRequest = {
+  refundMethod?: "cash" | "wallet_credit" | null;
+  refundCompletedAt?: string | null;
+  returnWaivedAt?: string | null;
   parentRequestId?: string | null;
   negotiationStatus?: string | null;
   negotiationOutcome?: string | null;

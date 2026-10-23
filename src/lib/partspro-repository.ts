@@ -701,6 +701,7 @@ export type AdminFinanceExpenseCategory =
   | "other";
 export type AdminFinanceEntryStatus = "pending" | "paid" | "cancelled";
 export type AdminFinanceLedgerType =
+  | "refund"
   | "sale"
   | "receivable"
   | "purchase"
@@ -1879,6 +1880,8 @@ export type UpdateAdminRmaInput = {
 };
 
 export type AdminRmaAction =
+  | "execute_refund"
+  | "waive_return"
   | "prepare_wallet_refund"
   | "split_request"
   | "cancel_unreceived"
@@ -1903,6 +1906,9 @@ export type AdminRmaAction =
   | "close";
 
 export type PerformAdminRmaActionInput = {
+  refundMethod?: "cash" | "wallet_credit";
+  cashPaid?: boolean;
+  confirmResolutionChange?: boolean;
   negotiationOutcome?: "refund_wallet" | "replacement" | "return_to_customer" | "scrap_without_refund";
   customerConfirmation?: string;
   trackingNumber?: string;
@@ -8042,6 +8048,7 @@ async function readAdminSupplierBatchChargeDetails(
 const adminFinanceReadLimit = 50000;
 
 type AdminFinanceDataSet = {
+  refunds: DbRow[];
   allocations: DbRow[];
   costLayers: DbRow[];
   expenses: DbRow[];
@@ -8214,6 +8221,7 @@ async function readAdminFinanceDataSet(
 ): Promise<AdminFinanceDataSet> {
   try {
     const [
+      refunds,
       orders,
       orderLines,
       suppliers,
@@ -8224,6 +8232,7 @@ async function readAdminFinanceDataSet(
       expenses,
       payments,
     ] = await Promise.all([
+      readFinanceRows(client, "rma_requests", "id,order_id,order_no,sku_code,status,resolution_action,refund_method,refund_net_amount,refund_gross_amount,refund_amount,refund_completed_at,resolved_at,updated_at", adminFinanceReadLimit),
       readFinanceRows(client, "orders", adminOrderListSelect, adminFinanceReadLimit),
       readFinanceRows(
         client,
@@ -8276,6 +8285,7 @@ async function readAdminFinanceDataSet(
     ]);
 
     return {
+      refunds,
       allocations,
       costLayers,
       expenses,
@@ -8311,7 +8321,7 @@ function summarizeAdminFinance(
   ) {
     throw new RepositoryWriteError(422, "ADMIN_FINANCE_CURRENCY_REVIEW", "Non-EUR entries require currency reconciliation before EUR totals can be shown.");
   }
-  const salesNet = sumFinanceLedgerRows(ledgerRows, "sale");
+  const salesNet = roundMoney(sumFinanceLedgerRows(ledgerRows, "sale") - sumFinanceLedgerRows(ledgerRows, "refund"));
   const pendingReceivables = sumFinanceLedgerRows(ledgerRows, "receivable");
   const purchaseNet = sumFinanceLedgerRows(ledgerRows, "purchase");
   const cogsNet = sumFinanceLedgerRows(ledgerRows, "cogs");
@@ -8468,6 +8478,23 @@ function buildAdminFinanceLedgerRows(
   const maps = makeAdminFinanceMaps(dataSet);
   const rows: AdminFinanceLedgerRow[] = [];
 
+  for (const refund of dataSet.refunds ?? []) {
+    if (!["refunded", "closed"].includes(pickString(refund, ["status"]) ?? "") ||
+        !["refund_cash", "refund_wallet"].includes(pickString(refund, ["resolution_action"]) ?? "")) continue;
+    const date = pickString(refund, ["refund_completed_at", "resolved_at", "updated_at"]);
+    if (!date || !financeWithinDate(date, query)) continue;
+    const method = pickString(refund, ["refund_method"]) ?? "wallet_credit";
+    const refundNet = pickNumber(refund, ["refund_net_amount"]);
+    if (refundNet === null) throw new RepositoryWriteError(422, "RMA_REFUND_FINANCIAL_EVIDENCE_REQUIRED", "Refund net and tax evidence must be verified before financial reporting.");
+    rows.push({ id: `refund:${pickString(refund, ["id"])}`, type: "refund", date,
+      amountNet: refundNet,
+      title: method === "cash" ? "Cash refund paid" : "Wallet refund credited", currency: "EUR",
+      orderId: pickString(refund, ["order_id"]), orderNo: pickString(refund, ["order_no"]),
+      skuCode: pickString(refund, ["sku_code"]), batchId: null, batchCode: null, supplierId: null,
+      supplierName: null, category: "refund", status: "paid", confidence: "exact",
+      metadata: { refundMethod: method, amountGross: pickNumber(refund, ["refund_gross_amount", "refund_amount"]) ?? 0 },
+    });
+  }
   for (const order of dataSet.orders.filter(isFinanceOrderEligible)) {
     const paymentStatus = normalizePaymentStatus(pickString(order, ["payment_status"]));
     const date = financeOrderDate(order, query.dateMode);
@@ -8955,7 +8982,7 @@ function financeLedgerRowMatches(
   if (query.type && row.type !== query.type) return false;
   if (query.supplierKey && financeSupplierKey(row) !== query.supplierKey) return false;
   const views: Record<string, readonly AdminFinanceLedgerType[]> = {
-    margin: ["sale", "cogs", "receivable"], purchases: ["purchase", "supplier_payment"], expenses: ["expense"],
+    margin: ["sale", "cogs", "receivable", "refund"], purchases: ["purchase", "supplier_payment"], expenses: ["expense"],
   };
   if (query.ledgerView && !views[query.ledgerView]?.includes(row.type)) return false;
   if (!financeCategoryMatches(row.category, query.category)) {
@@ -12887,6 +12914,8 @@ async function hydrateAdminRmaRows(
 }
 
 const allRmaCapabilities = {
+  approveRefund: true,
+  qc: true,
   manage: true,
   inventory: true,
   refund: true,
@@ -13011,7 +13040,7 @@ async function readAdminRmaRefundPreview(
   client: SupabaseServerClient,
   requestId: string
 ): Promise<AdminRmaRefundPreview | null> {
-  const { data, error } = await client.rpc("admin_rma_refund_preview_v4", {
+  const { data, error } = await client.rpc("admin_rma_refund_preview_v5", {
     p_request_id: requestId,
   });
 
@@ -13714,6 +13743,19 @@ async function performAdminRmaActionViaRpc(
   context: SupabaseContext,
   input: PerformAdminRmaActionInput
 ): Promise<RmaRequest | null> {
+  if (["execute_refund", "waive_return", "mark_received", "close"].includes(input.action)) {
+    const { data, error } = await context.client.rpc("admin_perform_rma_simple_action_v1", {
+      p_request_id: input.requestId, p_action: input.action,
+      p_idempotency_key: input.idempotencyKey,
+      p_payload: { refund_method: input.refundMethod, refund_amount: input.refundAmount,
+        cash_paid: input.cashPaid, confirm_resolution_change: input.confirmResolutionChange,
+        reason: input.reason, quantity: input.quantity, customer_visible_note: input.customerVisibleNote },
+    });
+    if (error) throw new RepositoryWriteError(supabaseRpcStatus(error), "RMA_REFUND_FAILED",
+      "The return or refund could not be completed. Refresh the request before retrying.", supabaseErrorDetails(error));
+    const row = Array.isArray(data) ? data.find(isDbRow) : data;
+    return isDbRow(row) ? mapRmaRpcRow(context, row) : null;
+  }
   if (input.action === "prepare_wallet_refund") {
     const { data, error } = await context.client.rpc("admin_prepare_rma_wallet_refund_v1", {
       p_request_id: input.requestId, p_reason: input.reason, p_idempotency_key: input.idempotencyKey,
@@ -16366,7 +16408,7 @@ function mapRmaRow(
     normalizeRmaWalletRefundStatus(pickString(row, ["wallet_refund_status"]));
   let resolutionQuantity = null;
 
-  if (resolutionAction === "refund_wallet" || (!resolutionAction && status === "refunded")) {
+  if (resolutionAction === "refund_wallet" || resolutionAction === "refund_cash" || (!resolutionAction && status === "refunded")) {
     resolutionQuantity = pickNumber(row, ["refund_approved_quantity"]);
   } else if (
     resolutionAction === "replacement" ||
@@ -16387,6 +16429,9 @@ function mapRmaRow(
     customerConfirmation: pickString(row, ["customer_confirmation"]),
     customerConfirmedAt: pickString(row, ["customer_confirmed_at"]),
     returnToCustomerTracking: pickString(row, ["outbound_tracking_number"]),
+    refundMethod: row.refund_method === "cash" ? "cash" : row.refund_method === "wallet_credit" ? "wallet_credit" : null,
+    refundCompletedAt: pickString(row, ["refund_completed_at"]),
+    returnWaivedAt: pickString(row, ["return_waived_at"]),
     refundPricingVerified: isDbRow(row.refund_pricing_snapshot),
     unitPriceSnapshot: pickNumber(row, ["unit_price_snapshot"]),
     replacementReservedOrderId: pickString(row, ["replacement_reserved_order_id"]),
@@ -17528,6 +17573,7 @@ function normalizeRmaResolutionAction(
   if (
     value === "replacement" ||
     value === "refund_wallet" ||
+    value === "refund_cash" ||
     value === "credit_note" ||
     value === "no_fault" ||
     value === "scrap" ||

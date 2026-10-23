@@ -4,7 +4,7 @@ import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 
 export const financeQuerySchema = z
   .object({
-    type: z.enum(["sale","receivable","purchase","cogs","expense","supplier_payment"]).optional(),
+    type: z.enum(["sale","receivable","purchase","cogs","expense","supplier_payment","refund"]).optional(),
     category: z.string().trim().min(1).max(80).optional(),
     confidence: z.enum(["exact", "estimated", "unmatched"]).optional(),
     dateFrom: financeDateSchema.optional(),

@@ -141,17 +141,30 @@ test("preparing a legacy return requires exact management, request and approval 
   assert.equal(route.writes[0].idempotencyKey, payload.idempotencyKey);
 });
 
-test("already disposed legacy replacement exposes a safe preparation path without reopening stock", () => {
+test("already disposed legacy replacement exposes unified refund without reopening stock", () => {
   const permissions = ["rma.read", "rma.manage", "rma.refund", "wallet_refunds.approve"];
   for (const disposition of ["restock", "scrap"]) {
     const row = { ...received, requestedResolution: "replacement", refundPricingVerified: false,
       unitPriceSnapshot: null, inventoryDisposition: disposition, inventoryDispositionQuantity: 1 };
     const state = dto.toAdminRmaDto(row, dto.getAdminRmaCapabilities(auth(permissions)));
-    assert.equal(state.availableActions.includes("prepare_wallet_refund"), true);
+    assert.equal(state.availableActions.includes("execute_refund"), true);
     assert.equal(state.availableActions.includes("verify_refund_snapshot"), false);
     assert.equal(state.availableActions.includes("restock_return"), false);
     assert.equal(state.canApproveWalletRefund, false);
     const reader = dto.toAdminRmaDto(row, dto.getAdminRmaCapabilities(auth(["rma.read"])));
     assert.equal(reader.availableActions.includes("prepare_wallet_refund"), false);
   }
+});
+
+test('unified money action requires approval permission, explicit method, exact amount and actual cash confirmation', async () => {
+ const payload={action:'execute_refund',refundMethod:'cash',refundAmount:13,cashPaid:true,idempotencyKey:'unified-refund-fixture'};
+ const manager=actionRoute(['rma.read','rma.manage']);
+ assert.equal((await manager.post(payload)).status,403);assert.equal(manager.writes.length,0);
+ const approver=actionRoute(['rma.read','wallet_refunds.approve']);
+ for(const extra of [{refundMethod:undefined},{refundAmount:undefined},{cashPaid:false},{idempotencyKey:undefined},{refundAmount:13.001}])assert.equal((await approver.post({...payload,...extra})).status,400);
+ assert.equal(approver.writes.length,0);
+ assert.equal((await approver.post(payload)).status,200);
+ assert.equal((await approver.post({...payload,refundMethod:'wallet_credit',cashPaid:false})).status,200);
+ const reader=actionRoute(['wallet_refunds.approve']);
+ assert.equal((await reader.post(payload)).status,403);
 });

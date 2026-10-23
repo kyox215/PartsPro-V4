@@ -137,6 +137,8 @@ export type RmaCompleteAttachmentInput = z.infer<typeof rmaCompleteAttachmentSch
 export const adminRmaActionSchema = z
   .object({
     action: z.enum([
+      "execute_refund",
+      "waive_return",
       "prepare_wallet_refund",
       "split_request",
       "cancel_unreceived",
@@ -174,13 +176,23 @@ export const adminRmaActionSchema = z
     qcNote: z.string().trim().max(1000).optional(),
     qcStatus: z.enum(["passed", "failed", "not_required"]).optional(),
     reason: z.string().trim().max(1000).optional(),
+    refundMethod: z.enum(["cash", "wallet_credit"]).optional(),
+    cashPaid: z.boolean().optional(),
+    confirmResolutionChange: z.boolean().optional(),
     refundAmount: z.number().positive().max(999999).multipleOf(0.01).optional(),
     replacementOrderId: uuid.optional(),
     replacementOrderNumber: z.string().trim().max(120).optional(),
     supplier: z.string().trim().max(160).optional(),
     warehouse: z.literal("Milano").optional(),
   })
-  .strict();
+  .strict().superRefine((value, ctx) => {
+    if (value.action === "execute_refund" && (!value.idempotencyKey || !value.refundMethod || value.refundAmount === undefined || (value.refundMethod === "cash" && value.cashPaid !== true))) {
+      ctx.addIssue({ code: "custom", message: "Confirm the refund method, amount, stable key and actual cash payment." });
+    }
+    if (value.action === "waive_return" && (!value.idempotencyKey || (value.reason?.length ?? 0) < 8)) {
+      ctx.addIssue({ code: "custom", message: "A stable key and reason for waiving the return are required." });
+    }
+  });
 
 export type AdminRmaActionInput = z.infer<typeof adminRmaActionSchema>;
 
@@ -210,6 +222,8 @@ export type CustomerRmaAttachmentDto = {
 };
 
 export type CustomerRmaDto = {
+  refundMethod?: "cash" | "wallet_credit" | null;
+  returnWaivedAt?: string | null;
   parentRequestId?: string | null;
   negotiationStatus?: string | null;
   negotiationOutcome?: string | null;

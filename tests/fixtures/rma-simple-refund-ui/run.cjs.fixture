@@ -1,0 +1,79 @@
+const projectRequire = require('module').createRequire(process.cwd() + '/package.json');
+const { chromium } = projectRequire(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const fs = require('fs'), http = require('http'), assert = require('assert/strict');
+const dir=__HARNESS_DIR__, output=process.env.RMA_UI_OUTPUT_DIR;
+const id='11111111-1111-4111-8111-111111111111';
+const base={id,rmaNo:'TEST-SIMPLE-RMA',orderId:'TEST-ORDER',orderNumber:'TEST-ORDER',sku:'TEST-DISPLAY',productName:'Honor X8 Black — synthetic return',customerName:'Synthetic customer',status:'approved',quantity:1,receivedQuantity:null,receivedAt:null,createdAt:'2026-10-23',qcStatus:'pending',inventoryDisposition:'pending',requestedResolution:'wallet_credit',refundPricingVerified:true,negotiationStatus:'none',attachments:[],events:[],refundPreview:{available:true,currency:'EUR',maxRefundAmount:13,quantity:1,netAmount:13,taxAmount:0,shippingIncluded:false},replacementCandidates:[]};
+let current={...base}, permitted=true, fail=false; const writes=[],errors=[],checks=[];
+(async()=>{
+ fs.mkdirSync(output,{recursive:true});
+ const {projectRmaV4Workflow}=await import(require('url').pathToFileURL(process.cwd()+'/src/lib/partspro-rma-v4-rules.mjs').href);
+ const dto=()=>({...current,...projectRmaV4Workflow(current,{manage:permitted,inventory:permitted,refund:permitted,adjustStock:permitted,approveRefund:permitted,qc:permitted}),canApproveWalletRefund:false});
+ const cssSource=fs.readFileSync(process.cwd()+'/src/app/globals.css','utf8').replace('@import "tailwindcss";','@import "tailwindcss" source(none);')+'\n@source "../components/partspro/admin-rma-panel.tsx";\n@source "../components/partspro/admin-rma-refund-card.tsx";\n@source "../components/ui";';
+ const css=(await projectRequire('postcss')([projectRequire('@tailwindcss/postcss')()]).process(cssSource,{from:process.cwd()+'/src/app/globals.css'})).css;
+ const server=http.createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'application/javascript':'text/html');res.end(req.url==='/bundle.js'?fs.readFileSync(dir+'/bundle.js'):'<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><body><div id="root"></div><script>window.process={env:{NODE_ENV:"development"}}</script><script src="/bundle.js"></script></body></html>');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
+ try{
+ browser=await chromium.launch({headless:true,channel:'chrome'});
+ for(const locale of ['zh-CN','it','en']) for(const width of [390,1440]) {
+  const page=await browser.newPage({viewport:{width,height:900}});page.setDefaultTimeout(10000);
+  page.on('pageerror',e=>errors.push(e.message));
+  current={...base};permitted=true;fail=false;
+  await page.route('**/api/**',async route=>{
+   const req=route.request(),path=new URL(req.url()).pathname;
+   if(req.method()==='POST'&&path.endsWith('/actions')){
+    const payload=req.postDataJSON();writes.push(payload);
+    if(fail){fail=false;return route.fulfill({status:503,json:{error:{message:'Synthetic retryable failure'}}});}
+    if(payload.action==='execute_refund') current={...current,status:'refunded',refundMethod:payload.refundMethod,refundAmount:payload.refundAmount,refundGrossAmount:payload.refundAmount,refundCompletedAt:'2026-10-23T20:00:00Z',resolutionAction:payload.refundMethod==='cash'?'refund_cash':'refund_wallet'};
+    if(payload.action==='waive_return') current={...current,returnWaivedAt:'2026-10-23T20:01:00Z'};
+    if(payload.action==='approve')current={...current,status:'approved'};
+    if(payload.action==='close')current={...current,status:'closed'};
+    return route.fulfill({json:{data:dto()}});
+   }
+   if(path==='/api/admin/rma')return route.fulfill({json:{data:[dto()],meta:{total:1,totalIsExact:true,queueCounts:{review:1,resolution:1,inventory_close:1},countsComplete:true}}});
+   if(path==='/api/admin/rma/'+id)return route.fulfill({json:{data:dto()}});
+   return route.fulfill({json:{data:[]}});
+  });
+  const url='http://127.0.0.1:'+server.address().port+'/?locale='+locale;
+  const load=async()=>{await page.goto(url);await page.getByRole('button').filter({hasText:'Honor X8 Black'}).click();await page.locator('#rma-wallet-flow').waitFor();};
+  const label=(zh,it,en)=>locale==='zh-CN'?zh:locale==='it'?it:en;
+  for (const state of ['submitted','under_review']) {
+   current={...base,status:state};await load();
+   await page.getByRole('button',{name:label('批准','Approva','Approve'),exact:true}).click();
+   await page.getByLabel(label('客户退回指引','Istruzioni per il reso','Return instructions'),{exact:true}).fill('Please return the goods to the shop with safe packaging.');
+   await page.getByRole('dialog').getByRole('button',{name:label('批准','Approva','Approve'),exact:true}).click();
+   await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).waitFor();
+   assert.equal(writes.at(-1).action,'approve');
+  }
+  current={...base};await load();
+  await page.screenshot({path:output+`/actions-${locale}-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).click();
+  await page.getByLabel(label('客户钱包','Portafoglio','Customer wallet'),{exact:true}).check();
+  await page.getByLabel(label('退款金额（EUR）','Importo (EUR)','Refund amount (EUR)'),{exact:true}).fill('8');
+  fail=true;
+  await page.getByRole('button',{name:label('确认转入钱包','Conferma accredito','Confirm wallet credit'),exact:true}).click();
+  await page.getByText('Synthetic retryable failure',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel(label('退款金额（EUR）','Importo (EUR)','Refund amount (EUR)'),{exact:true}).inputValue(),'8');
+  const before=writes.length;
+  await page.getByRole('button',{name:label('确认转入钱包','Conferma accredito','Confirm wallet credit'),exact:true}).click();
+  await page.getByText(new RegExp(label('已退至钱包','Accreditato al portafoglio','Credited to wallet'))).waitFor();
+  assert.equal(writes[before-1].idempotencyKey,writes[before].idempotencyKey);
+  await page.getByRole('button',{name:label('无需退回商品','Non richiedere il reso','Waive goods return'),exact:true}).click();
+  await page.getByLabel(label('原因（至少 8 个字符）','Motivo (almeno 8 caratteri)','Reason (at least 8 characters)'),{exact:true}).fill('Customer may keep the defective item');
+  await page.getByRole('button',{name:label('确认无需退回','Conferma','Confirm no return'),exact:true}).click();
+  await page.getByText(new RegExp(label('无需退回','Reso non richiesto','No return required'))).first().waitFor();
+  current={...base};await load();
+  await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).click();
+  await page.getByLabel(label('现金','Contanti','Cash'),{exact:true}).check();
+  const pay=page.getByRole('button',{name:label('确认现金已支付','Conferma contanti pagati','Confirm cash paid'),exact:true});assert.equal(await pay.isDisabled(),true);
+  await page.getByLabel(label('我确认已将上述现金实际支付给客户','Confermo di aver consegnato questo importo in contanti al cliente','I confirm this cash amount has been paid to the customer'),{exact:true}).check();
+  assert.equal(await pay.isEnabled(),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.screenshot({path:output+`/cash-${locale}-${width}.png`,fullPage:true});
+  await pay.click();await page.getByText(new RegExp(label('已退现金','Rimborsato in contanti','Cash refund paid'))).waitFor();
+  permitted=false;current={...base};await load();assert.equal(await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).count(),0);
+  checks.push({locale,width,directApproval:true,walletRetry:true,cashConfirmation:true,waiver:true,readOnly:true,noOverflow:true});await page.close();
+ }
+ assert.deepEqual(errors,[]);fs.writeFileSync(output+'/browser-result.json',JSON.stringify({checks,writes,errors},null,2));console.log('PASS: 6 locale/viewport combinations, wallet retry key, cash confirmation, waiver, read-only and overflow');
+ }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
+})().catch(e=>{console.error(e);process.exitCode=1});
