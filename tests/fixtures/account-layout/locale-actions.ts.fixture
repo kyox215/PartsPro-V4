@@ -1,0 +1,1 @@
+export async function setLocale(){return {ok:true};}

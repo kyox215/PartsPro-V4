@@ -1,0 +1,143 @@
+const fs = require('fs'), http = require('http'), path = require('path');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const output = path.resolve(process.argv[2] || 'outputs/account-layout');
+const captureOnly = process.argv.includes('--baseline');
+const dir = __dirname;
+fs.mkdirSync(output, { recursive: true });
+const server = http.createServer((req, res) => {
+  const file = req.url.split('?')[0].slice(1);
+  if (file === 'bundle.js' || file.endsWith('.bundle.js') || file === 'current.css') {
+    res.setHeader('Content-Type', file.endsWith('.css') ? 'text/css' : 'application/javascript');
+    res.end(fs.readFileSync(path.join(dir, path.basename(file))));
+  } else if (file === 'brand/partspro-main-logo.png') {
+    res.setHeader('Content-Type', 'image/png');
+    res.end(fs.readFileSync(path.join(process.cwd(), 'public', file)));
+  } else if (file.startsWith('assets/')) {
+    res.setHeader('Content-Type', file.endsWith('.svg') ? 'image/svg+xml' : 'image/png');
+    res.end(fs.readFileSync(path.join(dir, 'assets', path.basename(file))));
+  } else {
+    res.setHeader('Content-Type', 'text/html');
+    res.end('<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/current.css"><body><div id="root" class="pp-storefront" data-mobile-navigation="true"></div><script>window.process={env:{NODE_ENV:"development"}}</script><script src="/bundle.js"></script></body></html>');
+  }
+});
+const scenes = {
+  overview: '', profile: 'view=profile', orders: 'section=orders', wallet: 'section=wallet',
+  service: 'section=service', 'service-empty': 'section=service&state=empty',
+  'wallet-empty': 'section=wallet&state=empty', 'orders-empty': 'section=orders&state=empty',
+  'order-detail': 'section=orders&orderId=PP-DEMO-0821', edit: 'view=edit', address: 'view=address',
+  notifications: 'view=notifications', rma: 'view=rma', 'rma-empty': 'view=rma&state=empty',
+  professional: 'view=professional', warning: 'state=error',
+};
+(async () => {
+  await new Promise(resolve => server.listen(3147, '127.0.0.1', resolve));
+  const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+  const page = await browser.newPage();
+  const errors = [], matrix = [], interactions = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/*', route => {
+    if (!route.request().url().startsWith('http://127.0.0.1:3147/')) return route.abort();
+    return route.continue();
+  });
+  async function open(scene, locale = 'zh-CN', width = 390, extra = '') {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`http://127.0.0.1:3147/?${scenes[scene]}&locale=${locale}${extra}`, { waitUntil: 'load' });
+    await page.locator('main').waitFor();
+    await page.waitForTimeout(scene === 'notifications' ? 220 : 120);
+    if (scene === 'address') await page.locator('.pp-profile-editor-nav > button').last().click();
+  }
+  try {
+    for (const locale of (process.env.LAYOUT_LOCALES?.split(',') || (captureOnly ? ['zh-CN'] : ['zh-CN', 'it-IT', 'en-US']))) {
+      for (const width of (process.env.LAYOUT_WIDTHS?.split(',').map(Number) || (captureOnly ? [390] : [320, 390, 430, 767, 768, 1024, 1440]))) {
+        for (const scene of (process.env.LAYOUT_SCENES?.split(',') || Object.keys(scenes))) {
+          await open(scene, locale, width);
+          const geometry = await page.evaluate(() => {
+            const w = innerWidth, issues = [];
+            const visible = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+            const boxes = [...document.querySelectorAll('.pp-account-workspace > *, .pp-account-main > *, .pp-account-panel, .pp-profile-summary-view, .pp-service-master-detail, [role=dialog]')].filter(visible).filter(el => getComputedStyle(el).display !== 'contents').map(el => {
+              const r = el.getBoundingClientRect();
+              if (r.left < -1 || r.right > w + 1) issues.push('outside viewport: ' + el.className);
+              if (el.scrollWidth > el.clientWidth + 2 && ['hidden','clip'].includes(getComputedStyle(el).overflowX)) issues.push('clipped content: ' + el.className);
+              return { className: el.className, x: Math.round(r.x), width: Math.round(r.width), right: Math.round(r.right) };
+            });
+            const workspace = document.querySelector('.pp-account-workspace');
+            if (w < 768 && workspace) {
+              const expected = workspace.getBoundingClientRect().width;
+              for (const el of document.querySelectorAll('.pp-account-heading, .pp-profile-summary-view, .pp-account-section:not([hidden])')) {
+                if (visible(el) && Math.abs(el.getBoundingClientRect().width - expected) > 2) issues.push('content does not fill workspace: ' + el.className);
+              }
+            }
+            const dialog = document.querySelector('[role=dialog]');
+            if (dialog) {
+              const r = dialog.getBoundingClientRect();
+              if (r.top < -1 || r.bottom > innerHeight + 1) issues.push('dialog outside visible height');
+            }
+            return { viewport: w, scrollWidth: document.documentElement.scrollWidth, issues, boxes };
+          });
+          matrix.push({ scene, locale, width, ...geometry });
+          if (locale === 'zh-CN' && [390, 1440].includes(width)) await page.screenshot({ path: path.join(output, `${scene}-${width}.png`), fullPage: !['edit','address','notifications','order-detail'].includes(scene) });
+        }
+      }
+    }
+    if (!captureOnly) {
+      for (const scene of ['profile','orders','wallet','service']) {
+        await open(scene, 'it-IT', 320, '&long=1');
+        const overflow = await page.evaluate(() => [...document.querySelectorAll('.pp-account-panel, .pp-profile-summary-view, .pp-service-master-detail')].filter(e => e.getClientRects().length).some(e => e.scrollWidth > e.clientWidth + 2));
+        if (overflow) errors.push('long content overflows ' + scene);
+        await page.screenshot({ path: path.join(output, `long-${scene}-320.png`), fullPage: true });
+      }
+      await open('orders');
+      const filters = page.locator('.pp-order-filters > button');
+      await filters.nth(2).click();
+      if (!(await page.locator('.pp-account-orders-table').innerText()).includes('PP-DEMO-0820')) throw Error('payment filter does not show matching order');
+      interactions.push('order status filter');
+      await open('order-detail');
+      await page.getByRole('dialog').waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByRole('dialog').waitFor({ state: 'detached' });
+      interactions.push('order detail open and Escape close');
+      await open('edit');
+      const companyInput = page.locator('#account-profile-companyName');
+      if (await companyInput.count()) await companyInput.fill('Fixture modified');
+      await page.locator('.pp-profile-editor-nav > button').last().click();
+      await page.locator('.pp-profile-editor-nav > button').first().click();
+      if (await companyInput.count() && await companyInput.inputValue() !== 'Fixture modified') throw Error('profile tab loses draft');
+      interactions.push('profile tabs retain draft');
+      await page.setViewportSize({ width: 390, height: 400 });
+      await page.waitForFunction(() => document.querySelector('[data-overlay-viewport]')?.style.getPropertyValue('--overlay-height') === '400px');
+      await page.waitForFunction(() => {const r=document.querySelector('[role=dialog]').getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight}, null, {timeout:1500});
+      await page.screenshot({ path: path.join(output, 'edit-short-viewport.png'), fullPage: false });
+      const bounds = await page.getByRole('dialog').boundingBox();
+      const viewportDiagnostic=await page.getByRole('dialog').evaluate(e=>{const s=getComputedStyle(e);return {box:e.getBoundingClientRect().toJSON(),maxHeight:s.maxHeight,minHeight:s.minHeight,overflowY:s.overflowY,top:s.top,translate:s.translate,height:s.height,parent:e.parentElement.outerHTML.slice(0,280),innerHeight,visualHeight:visualViewport.height}}); fs.writeFileSync(path.join(output,'short-viewport.json'),JSON.stringify(viewportDiagnostic,null,2));
+      if (bounds.y < -1 || bounds.y + bounds.height > 401) throw Error('short viewport clips dialog: '+JSON.stringify(viewportDiagnostic));
+      interactions.push('short viewport dialog bounds');
+      await page.getByRole('dialog').evaluate(e => { e.scrollTop = e.scrollHeight; });
+      const footer = await page.locator('[data-slot=dialog-footer]').boundingBox();
+      if (footer.y < 0 || footer.y + footer.height > 401) throw Error('short viewport footer unreachable');
+      await page.screenshot({ path: path.join(output, 'edit-short-footer.png'), fullPage: false });
+      interactions.push('short viewport cancel and save reachable by scrolling');
+      await open('service');
+      await page.locator('.pp-service-request-list input').fill('no-match-fixture');
+      if (await page.locator('.pp-service-request-option').count()) throw Error('service search does not filter');
+      interactions.push('service search empty state');
+      await open('overview');
+      await page.locator('.pp-overview-company-heading > .pp-inline-action').click();
+      await page.locator('.pp-profile-summary-view').waitFor();
+      await page.locator('.pp-profile-edit-action').click();
+      await page.getByRole('dialog').waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByRole('dialog').waitFor({state:'detached'});
+      if (!(await page.locator('.pp-profile-edit-action').evaluate(e=>e===document.activeElement))) throw Error('profile close does not restore focus');
+      interactions.push('overview to company details to editor; Escape restores focus');
+    }
+  } catch (error) {
+    errors.push(error.message);
+    throw error;
+  } finally {
+    const result = { baseline: captureOnly, checks: matrix.length, failures: matrix.filter(row => row.issues.length || row.scrollWidth > row.width), errors, interactions, matrix };
+    fs.writeFileSync(path.join(output, 'browser-result.json'), JSON.stringify(result, null, 2));
+    console.log(JSON.stringify({ checks: result.checks, failures: result.failures.map(r => ({ scene:r.scene, width:r.width, locale:r.locale, issues:r.issues })), errors, interactions }, null, 2));
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
+    if (!captureOnly && (result.failures.length || errors.length)) process.exitCode = 1;
+  }
+})().catch(error => { console.error(error); server.close(); process.exitCode = 1; });

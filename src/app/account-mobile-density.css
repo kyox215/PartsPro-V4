@@ -4,6 +4,8 @@
   .pp-storefront .pp-account-page .pp-account-content { padding:12px 12px 24px; }
   .pp-storefront .pp-account-page .pp-account-workspace { gap:8px; }
   .pp-storefront .pp-account-page .pp-account-main { display:contents; }
+  .pp-storefront .pp-account-page .pp-account-workspace > *,
+  .pp-storefront .pp-account-page .pp-account-main > * { min-width:0; }
   .pp-storefront .pp-account-page .pp-account-heading { order:-2; align-items:center; min-height:32px; padding:0; margin:0; gap:8px; }
   .pp-storefront .pp-account-page .pp-account-heading h1 { margin:0; font-size:22px; line-height:1.3; letter-spacing:-.5px; }
   .pp-storefront .pp-account-page .pp-profile-edit-action { min-height:44px; padding:8px 10px; align-self:center; font-size:12px; gap:6px; }
@@ -142,7 +144,11 @@
   .pp-storefront .pp-account-page .pp-account-info-banner > svg { width:18px; height:18px; }
   .pp-storefront .pp-account-page .pp-service-master-detail { gap:8px; }
   .pp-storefront .pp-account-page .pp-service-request-list { padding:0; border:0; background:transparent; }
-  .pp-storefront .pp-account-page .pp-service-request-list .pp-account-panel-header input { min-height:44px; font-size:16px; }
+  .pp-storefront .pp-account-page .pp-service-request-list .pp-account-panel-header { display:grid; grid-template-columns:minmax(0,1fr); }
+  .pp-storefront .pp-account-page .pp-service-request-list .pp-account-panel-header input { width:100%; max-width:none; min-width:0; min-height:44px; font-size:16px; }
+  .pp-storefront .pp-account-page .pp-service-request-option > span:nth-child(2),
+  .pp-storefront .pp-account-page .pp-service-selected-heading > div,
+  .pp-storefront .pp-account-page .pp-service-selected-product > div { min-width:0; overflow-wrap:anywhere; }
   .pp-storefront .pp-account-page .pp-service-request-option { grid-template-columns:32px minmax(0,1fr) auto; padding:10px; margin-top:8px; gap:8px; border-radius:9px; }
   .pp-storefront .pp-account-page .pp-service-request-icon { width:32px; height:40px; border-radius:6px; }
   .pp-storefront .pp-account-page .pp-service-request-icon > svg { width:20px; height:20px; }
