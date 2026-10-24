@@ -116,7 +116,7 @@ test("explicit linked stage and customer override restored filters before the fi
 test("shared detail tabs keep the active section while an order mutation is pending", () => {
   let changes = 0;
   const select = componentArrow("OrderDetailsPanel", "handleMobileSectionChange", {
-    orderId: "order", pendingActionKey: "order:payment", presentation: { unsaved: "Discard?" },
+    orderId: "order", mobileSection: "overview", pendingActionKey: "order:payment", presentation: { unsaved: "Discard?" },
     document: { querySelector: () => null }, window: { confirm: () => { throw Error("Must not prompt during a write"); } },
     setMobileSectionState: () => { changes += 1; },
   });
@@ -128,8 +128,9 @@ test("shared detail tabs preserve unsaved form drafts unless the user discards t
   for (const accepted of [false, true]) {
     let section = null, prompts = 0;
     const select = componentArrow("OrderDetailsPanel", "handleMobileSectionChange", {
-      orderId: "order", pendingActionKey: null, presentation: { unsaved: "Discard?" },
-      document: { querySelector: () => ({}) }, window: { confirm: () => { prompts += 1; return accepted; } },
+      orderId: "order", mobileSection: "overview", pendingActionKey: null, presentation: { unsaved: "Discard?" },
+      document: { querySelector: () => ({}) }, window: { confirm: () => { throw Error("Use app confirmation"); } },
+      requestDiscard: (proceed, dirty) => { if (dirty) prompts += 1; if (!dirty || accepted) proceed(); },
       setMobileSectionState: value => { section = value; },
     });
     select("history");
@@ -141,11 +142,52 @@ test("shared detail tabs preserve unsaved form drafts unless the user discards t
 test("shared detail tabs switch without prompting when there is no unsaved draft", () => {
   let section;
   const select = componentArrow("OrderDetailsPanel", "handleMobileSectionChange", {
-    orderId: "order", pendingActionKey: null, presentation: { unsaved: "Discard?" },
+    orderId: "order", mobileSection: "overview", pendingActionKey: null, presentation: { unsaved: "Discard?" },
     document: { querySelector: () => null }, window: { confirm: () => { throw Error("No draft"); } },
+    requestDiscard: (proceed, dirty) => { assert.equal(dirty, false); proceed(); },
     setMobileSectionState: value => { section = value; },
   });
   select("payment");
   assert.equal(section.orderId, "order");
   assert.equal(section.section, "payment");
+});
+
+test("closing a loading batch preview aborts the request and late results cannot reopen it", async () => {
+  const controller = { current: null };
+  let resolveRead, state;
+  const load = componentArrow("AdminOrdersPanel", "loadPrintOrders", {
+    printRequest: controller, AbortController, text: { orders: { detailError: "Failed" } },
+    setPrintPreview: value => { state = value; },
+    fetchOrderDetailFromApi: () => new Promise(resolve => { resolveRead = resolve; }),
+  });
+  const waiting = load(["order"]);
+  assert.equal(state.loading, true);
+  const close = componentArrow("AdminOrdersPanel", "closePrintPreview", {
+    printRequest: controller, setPrintPreview: value => { state = value; },
+  });
+  close(); resolveRead({ id: "order" }); await waiting;
+  assert.equal(state, null);
+});
+
+test("batch read failure stays in an escapable preview and retry prepares the same orders", async () => {
+  let state, failure = true, reads = 0;
+  const load = componentArrow("AdminOrdersPanel", "loadPrintOrders", {
+    printRequest: { current: null }, AbortController, Error, text: { orders: { detailError: "Failed" } },
+    setPrintPreview: value => { state = value; },
+    fetchOrderDetailFromApi: async id => { reads++; if (failure) throw new Error("HTTP 503"); return { id }; },
+  });
+  await load(["one", "two"]);
+  assert.equal(state.loading, false); assert.equal(state.error, "HTTP 503");
+  assert.deepEqual(Array.from(state.ids), ["one", "two"]);
+  failure = false; await load(Array.from(state.ids));
+  assert.equal(state.orders.length, 2); assert.equal(state.error, ""); assert.equal(reads, 4);
+});
+
+
+test("selecting the active tab leaves drafts untouched without a discard prompt", () => {
+  const select = componentArrow("OrderDetailsPanel", "handleMobileSectionChange", {
+    orderId: "order", mobileSection: "logistics", pendingActionKey: null,
+    requestDiscard: () => { throw Error("No navigation to confirm"); },
+  });
+  select("logistics");
 });

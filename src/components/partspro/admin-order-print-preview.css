@@ -1,0 +1,30 @@
+.order-print-page { background: white; padding: 24px; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px; }
+.order-print-document .sku { overflow-wrap: anywhere; }
+@media screen and (max-width: 639px) {
+  .order-print-page { padding: 12px; }
+  #order-print-surface .top { grid-template-columns: 1fr; gap: 8px; }
+  #order-print-surface .status { justify-content: flex-start; }
+  #order-print-surface h1 { font-size: 19px; }
+  #order-print-surface .meta-item:nth-child(5) { grid-column: 1 / -1; }
+  #order-print-surface table, #order-print-surface tbody { display: block; border: 0; }
+  #order-print-surface thead { display: none; }
+  #order-print-surface tr { display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px; gap: 4px; border-block-start: 1px solid #cbd5e1; padding-block: 10px; }
+  #order-print-surface td { width: auto; border: 0; padding: 0; }
+  #order-print-surface td.photo { grid-column: 1; grid-row: 1 / 3; }
+  #order-print-surface td.sku { grid-column: 2; grid-row: 2; font-size: 10px; color: #64748b; }
+  #order-print-surface td:nth-child(5) { grid-column: 2; grid-row: 1; }
+  #order-print-surface td.qty { grid-column: 3; grid-row: 1; }
+  #order-print-surface td.check, #order-print-surface td.index, #order-print-surface td.actual { display: none; }
+}
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html:has(#order-print-surface), body:has(#order-print-surface) { height: auto !important; overflow: visible !important; background: white !important; }
+  body:has(#order-print-surface) > :not([data-overlay-viewport]:has(#order-print-surface)) { display: none !important; }
+  [data-overlay-viewport]:has(#order-print-surface) { display: block !important; }
+  [data-overlay-viewport] > [data-order-print-preview] { position: static !important; display: block !important; transform: none !important; translate: none !important; scale: none !important; inset: auto !important; width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+  [data-order-print-preview] .order-print-toolbar { display: none !important; }
+  [data-order-print-preview] .order-print-scroll { display: block !important; overflow: visible !important; padding: 0 !important; }
+  #order-print-surface { max-width: none !important; }
+  .order-print-page { border: 0; border-radius: 0; margin: 0; padding: 0; break-after: page; }
+  .order-print-page:last-child { break-after: auto; }
+}

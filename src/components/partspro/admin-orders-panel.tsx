@@ -7,7 +7,7 @@ import { AdminSearchField } from "./admin-ui-controls";
 
 import * as React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { runOrderWriteAndRefresh, orderQueryParams, orderDeepLinkFilters, combinePackingSlipDocuments, type OrderMutationResult } from "@/lib/admin-orders-operation.mjs";
+import { runOrderWriteAndRefresh, orderQueryParams, orderDeepLinkFilters, type OrderMutationResult } from "@/lib/admin-orders-operation.mjs";
 import { useAdminMemoryValue, usePersistentAdminQuery, usePersistentAdminValue } from "./admin-workspace-state";
 import { createLatestRequest } from "@/lib/latest-request.mjs";
 import Image from "./optimized-image";
@@ -17,7 +17,6 @@ import {
   BadgeCheck,
   ChevronDown,
   ChevronRight,
-  LockKeyhole,
   MoreHorizontal,
   CheckCircle2,
   ClipboardList,
@@ -84,6 +83,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { OrderPrintPreview } from "./admin-order-print-preview";
 import { orderPresentationCopy } from "./admin-order-presentation";
 import {
   formatEuro,
@@ -433,6 +433,8 @@ function useAdminText() {
   return getAdminDictionary(locale).admin;
 }
 
+const OrderDiscardContext = React.createContext<(proceed: () => void, dirty: boolean) => void>((proceed) => proceed());
+
 export function AdminOrdersPanel({
   focusOrderId, permissions, customerId, returnAccountId, focusStatus,
 }: {
@@ -475,8 +477,16 @@ export function AdminOrdersPanel({
   const [page, setPage] = usePersistentAdminValue<number>("orders-page", 1);
   const [searchFilters, setSearchFilters] = usePersistentAdminQuery("orders-search", { dateFrom: "", dateTo: "", sort: "operations_queue" });
   const [orderQuery, setOrderQuery] = useAdminMemoryValue("orders.query", "");
+  const [batchSelecting, setBatchSelecting] = React.useState(false);
   const [selectedForPrint, setSelectedForPrint] = React.useState<string[]>([]);
-  const [printing, setPrinting] = React.useState(false);
+  const [printPreview, setPrintPreview] = React.useState<{ orders: AdminOrder[]; ids: string[]; loading: boolean; error: string } | null>(null);
+  const printDocuments = React.useMemo(() => printPreview?.orders.map(order => buildOrderPackingSlipHtml(order, labels, text)) ?? [], [printPreview, labels, text]);
+  const printRequest = React.useRef<AbortController | null>(null);
+  const [discardAction, setDiscardAction] = React.useState<{ proceed: () => void } | null>(null);
+  const requestDiscard = React.useCallback((proceed: () => void, dirty: boolean) => {
+    if (dirty) setDiscardAction({ proceed }); else proceed();
+  }, []);
+  React.useEffect(() => () => printRequest.current?.abort(), []);
   const mutationInFlight = React.useRef(false);
   const explicitLinkKey = `${focusStatus ?? ""}:${customerId ?? ""}:${focusOrderId ?? ""}`;
   const [appliedLinkKey, setAppliedLinkKey] = useAdminMemoryValue("orders.appliedLinkKey", "");
@@ -1109,40 +1119,42 @@ export function AdminOrdersPanel({
     [patchOrderShipping, text.orders.shippingAdjustmentSaved]
   );
 
-  const handlePrintSelected = React.useCallback(async () => {
-    const ids = selectedForPrint.slice(0, 50);
-    if (!ids.length || printing) return;
-    const printWindow = window.open("", "_blank", "width=900,height=1200");
-    if (!printWindow) { setNotice({ tone: "error", message: (locale.startsWith("en") ? englishUiCopy("Consenti la finestra di anteprima stampa.") : locale.startsWith("it") ? "Consenti la finestra di anteprima stampa." : "请允许打开打印预览窗口。") }); return; }
-    printWindow.opener = null; printWindow.document.body.textContent = text.common.refreshing;
-    setPrinting(true);
-    try {
-      const selected = await Promise.all(ids.map(id => fetchOrderDetailFromApi(id)));
-      const html = combinePackingSlipDocuments(selected.map(order => buildOrderPackingSlipHtml(order, labels, text)));
-      printWindow.document.open(); printWindow.document.write(html); printWindow.document.close();
-      await waitForPrintAssets(printWindow); printWindow.focus(); printWindow.print();
-    } catch (error) { printWindow.close(); setNotice({ tone: "error", message: error instanceof Error ? error.message : text.orders.detailError }); }
-    finally { setPrinting(false); }
-  }, [labels, locale, printing, selectedForPrint, text]);
+  const closePrintPreview = React.useCallback(() => {
+    printRequest.current?.abort();
+    printRequest.current = null;
+    setPrintPreview(null);
+  }, []);
 
-  const handlePrintOrder = React.useCallback(
-    (order: AdminOrder) => {
-      printOrderPackingSlip(order, labels, text);
-    },
-    [labels, text]
-  );
+  const loadPrintOrders = React.useCallback(async (ids: string[]) => {
+    if (!ids.length) return;
+    printRequest.current?.abort();
+    const controller = new AbortController();
+    printRequest.current = controller;
+    setPrintPreview({ orders: [], ids: ids.slice(0, 50), loading: true, error: "" });
+    try {
+      const selected = await Promise.all(ids.slice(0, 50).map(id => fetchOrderDetailFromApi(id, controller.signal)));
+      if (!controller.signal.aborted) setPrintPreview({ orders: selected, ids, loading: false, error: "" });
+    } catch (error) {
+      if (!controller.signal.aborted) setPrintPreview({ orders: [], ids, loading: false, error: error instanceof Error ? error.message : text.orders.detailError });
+    }
+  }, [text.orders.detailError]);
+
+  const handlePrintSelected = React.useCallback(() => {
+    if (printPreview) return;
+    void loadPrintOrders(selectedForPrint);
+  }, [loadPrintOrders, printPreview, selectedForPrint]);
+
+  const handlePrintOrder = React.useCallback((order: AdminOrder) => {
+    if (!printPreview) setPrintPreview({ orders: [order], ids: [order.id], loading: false, error: "" });
+  }, [printPreview]);
 
   const handleOpenOrder = React.useCallback((orderId: string) => {
-    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm((locale.startsWith("en") ? englishUiCopy("Abbandonare le modifiche non salvate?") : locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？"))) return;
-    setSelectedOrderId(orderId);
-    setMobileDetailsOpen(true);
-  }, [locale, setSelectedOrderId]);
+    requestDiscard(() => { setSelectedOrderId(orderId); setMobileDetailsOpen(true); }, Boolean(document.querySelector("[data-admin-dirty='true']")));
+  }, [requestDiscard, setSelectedOrderId]);
 
   const handleOpenMobileDetails = React.useCallback((orderId: string) => {
-    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm((locale.startsWith("en") ? englishUiCopy("Abbandonare le modifiche non salvate?") : locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？"))) return;
-    setSelectedOrderId(orderId);
-    setMobileDetailsOpen(true);
-  }, [locale, setSelectedOrderId]);
+    requestDiscard(() => { setSelectedOrderId(orderId); setMobileDetailsOpen(true); }, Boolean(document.querySelector("[data-admin-dirty='true']")));
+  }, [requestDiscard, setSelectedOrderId]);
   const handleQuickTransition = React.useCallback(
     (order: AdminOrder) => {
       if (!canManageOrders) { handleOpenOrder(order.id); return; }
@@ -1174,6 +1186,7 @@ export function AdminOrdersPanel({
   </div>;
 
   return (
+    <OrderDiscardContext.Provider value={requestDiscard}>
     <section data-order-layout="account-style" className="admin-ui-panel w-full min-w-0 space-y-3 text-slate-950">
       <Card className="gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_10px_26px_rgba(15,23,42,0.045)]">
         <CardHeader className="gap-1.5 border-b border-slate-200/80 px-3 py-2 sm:gap-2 sm:py-2.5">
@@ -1287,7 +1300,11 @@ export function AdminOrdersPanel({
           )}
 
 
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2" data-order-batch-toolbar>
+              <Button type="button" variant="outline" size="sm" aria-pressed={batchSelecting} onClick={() => { setBatchSelecting(current => !current); setSelectedForPrint([]); }}><Printer className="size-4" />{batchSelecting ? text.common.cancel : presentation.batchPrint}</Button>
+              {batchSelecting && <><span className="text-xs text-slate-500">{selectedForPrint.length}/50</span><Button type="button" size="sm" disabled={!selectedForPrint.length || printPreview !== null} onClick={handlePrintSelected}>{presentation.printPreview}</Button><Button type="button" variant="ghost" size="sm" disabled={!selectedForPrint.length} onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></>}
+            </div>
             {isLoadingOrders && !dataSource.syncedAt && orders.length === 0 ? (
               <OrdersListSkeleton text={text} />
             ) : (
@@ -1297,6 +1314,9 @@ export function AdminOrdersPanel({
                 rows={5}
               >
                 <OrdersList
+                  selecting={batchSelecting}
+                  selectedForPrint={selectedForPrint}
+                  onTogglePrint={(id, checked) => setSelectedForPrint(current => checked ? [...new Set([...current, id])].slice(0, 50) : current.filter(value => value !== id))}
                   canManage={canManageOrders}
                   labels={labels}
                   orders={visibleOrders}
@@ -1316,13 +1336,9 @@ export function AdminOrdersPanel({
               </AdminBusyRegion>
             )}
           </div>
-          <details className="rounded-lg border p-2"><summary className="cursor-pointer text-sm font-semibold">{(locale.startsWith("en") ? englishUiCopy("Seleziona ordini per la stampa") : locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印")} ({selectedForPrint.length}/50)</summary>
-            <div className="mt-2 flex flex-wrap gap-3">{visibleOrders.map(order => <label key={order.id} className="flex items-center gap-2 text-xs"><Checkbox checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={(checked) => setSelectedForPrint(current => checked ? [...new Set([...current, order.id])] : current.filter(id => id !== order.id))} />{shortOrderId(order.id)}</label>)}</div>
-            <div className="mt-2 flex gap-2"><Button type="button" size="sm" disabled={!selectedForPrint.length || printing} onClick={() => void handlePrintSelected()}><Printer className="size-4" />{(locale.startsWith("en") ? englishUiCopy("Anteprima stampa selezionati") : locale.startsWith("it") ? "Anteprima stampa selezionati" : "打印所选预览")}</Button><Button variant="outline" size="sm" onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></div>
-          </details>
           <Dialog
             open={mobileDetailsOpen && selectedOrder !== null}
-            onOpenChange={(open) => { if (pendingOrderAction) return; if (!open && document.querySelector("[data-admin-dirty='true']") && !window.confirm((locale.startsWith("en") ? englishUiCopy("Abbandonare le modifiche non salvate?") : locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？"))) return; setMobileDetailsOpen(open); }}
+            onOpenChange={(open) => { if (!pendingOrderAction) requestDiscard(() => setMobileDetailsOpen(open), !open && Boolean(document.querySelector("[data-admin-dirty='true']"))); }}
           >
             {selectedOrder && (
               <DialogContent data-order-layout="account-style" className="admin-ui-panel grid h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none bg-white p-0 sm:h-[min(900px,calc(100dvh-2rem))] sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-[1280px] sm:rounded-xl">
@@ -1365,7 +1381,15 @@ export function AdminOrdersPanel({
           </Dialog>
         </CardContent>
       </Card>
+      {printPreview && <OrderPrintPreview documents={printDocuments} loading={printPreview.loading} error={printPreview.error} locale={locale} onClose={closePrintPreview} onRetry={() => void loadPrintOrders(printPreview.ids)} />}
+      <AlertDialog open={discardAction !== null} onOpenChange={open => { if (!open) setDiscardAction(null); }}>
+        <AlertDialogContent className="admin-ui-panel">
+          <AlertDialogHeader><AlertDialogTitle>{presentation.discardTitle}</AlertDialogTitle><AlertDialogDescription>{presentation.discardDescription}</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>{presentation.keepEditing}</AlertDialogCancel><AlertDialogAction onClick={() => { const action = discardAction; setDiscardAction(null); action?.proceed(); }}>{presentation.discard}</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
+    </OrderDiscardContext.Provider>
   );
 }
 
@@ -1450,6 +1474,7 @@ function OrderWorkflowStrip({
 }
 
 function OrdersList({
+  selecting, selectedForPrint, onTogglePrint,
   canManage,
   labels,
   orders,
@@ -1466,6 +1491,9 @@ function OrdersList({
   onQuickTransition,
   onSelectOrder,
 }: {
+  selecting: boolean;
+  selectedForPrint: string[];
+  onTogglePrint: (id: string, checked: boolean) => void;
   canManage: boolean;
   labels: OrderLabels;
   orders: AdminOrder[];
@@ -1482,6 +1510,11 @@ function OrdersList({
   onQuickTransition: (order: AdminOrder) => void;
   onSelectOrder: (orderId: string) => void;
 }) {
+  const { locale } = useI18n();
+  const presentation = orderPresentationCopy(locale);
+  function renderPrintSelection(order: AdminOrder) {
+    return <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center"><Checkbox aria-label={`${presentation.selectForPrint} ${order.id}`} checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={checked => onTogglePrint(order.id, checked === true)} /></label>;
+  }
   return (
     <div className="min-w-0 space-y-2">
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -1504,8 +1537,9 @@ function OrdersList({
         {orders.length > 0 ? (
           orders.map((order) => {
             return (
+              <div key={order.id} className="flex min-w-0 items-start gap-1.5">
+              {selecting && renderPrintSelection(order)}
               <button
-                key={order.id}
                 type="button"
                 aria-label={formatAdminMessage(text.orders.mobileOpenAria, {
                   id: order.id,
@@ -1520,6 +1554,7 @@ function OrdersList({
               >
                 <MobileOrderCard labels={labels} order={order} text={text} viewMode={viewMode} />
               </button>
+              </div>
             );
           })
         ) : (
@@ -1531,6 +1566,7 @@ function OrdersList({
         <Table className="min-w-[980px] text-xs">
           <TableHeader className="bg-slate-50 [&_th]:h-8 [&_th]:px-2 [&_th]:text-xs">
             <TableRow>
+              {selecting && <TableHead className="w-12"><span className="sr-only">{presentation.selectForPrint}</span></TableHead>}
               <TableHead>{text.orders.table.order}</TableHead>
               <TableHead>{text.orders.table.customer}</TableHead>
               <TableHead>{text.orders.table.status}</TableHead>
@@ -1568,6 +1604,7 @@ function OrdersList({
                   data-state={selectedOrderId === order.id ? "selected" : undefined}
                   className="h-[44px]"
                 >
+                  {selecting && <TableCell>{renderPrintSelection(order)}</TableCell>}
                   <TableCell>
                     <div
                       className="font-mono text-xs font-semibold text-slate-600"
@@ -1676,7 +1713,7 @@ function OrdersList({
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="h-28 text-center text-slate-500">
+                <TableCell colSpan={selecting ? 7 : 6} className="h-28 text-center text-slate-500">
                   {text.orders.empty}
                 </TableCell>
               </TableRow>
@@ -1854,8 +1891,7 @@ function OrderDetailsPanel({
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => Promise<OrderMutationResult>;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
-  const { locale } = useI18n();
-  const presentation = orderPresentationCopy(locale);
+  const requestDiscard = React.useContext(OrderDiscardContext);
   const [trackingDetailsState, setTrackingDetailsState] = React.useState(() => ({
     open: false,
     refreshedAt: new Date().toISOString(),
@@ -1882,11 +1918,10 @@ function OrderDetailsPanel({
     mobileSectionState.orderId === orderId ? mobileSectionState.section : "overview";
   const handleMobileSectionChange = React.useCallback(
     (section: MobileOrderDetailsSection) => {
-      if (pendingActionKey?.startsWith(`${orderId}:`)) return;
-      if (document.querySelector("[data-admin-dirty='true']") && !window.confirm(presentation.unsaved)) return;
-      setMobileSectionState({ orderId, section });
+      if (pendingActionKey?.startsWith(`${orderId}:`) || section === mobileSection) return;
+      requestDiscard(() => setMobileSectionState({ orderId, section }), Boolean(document.querySelector("[data-admin-dirty='true']")));
     },
-    [orderId, pendingActionKey, presentation.unsaved]
+    [mobileSection, orderId, pendingActionKey, requestDiscard]
   );
 
   const handleToggleTrackingDetails = React.useCallback(() => {
@@ -2214,9 +2249,9 @@ function OrderMobileDetailsSection({
   }
 
   if (activeSection === "lines") {
-    return <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
+    return <div className="min-w-0 space-y-3">
       <OrderLines canEditLines={canEditLines} isMutating={isMutating} lines={order.lines} order={order} text={text} onUpdateLineFulfillment={onUpdateLineFulfillment} />
-      <aside className="min-w-0"><div className="hidden xl:block"><OrderCustomerSummary order={order} text={text} labels={labels} /></div><div className="xl:hidden"><OrderAmountSummary order={order} text={text} /></div></aside>
+      <OrderAmountSummary order={order} text={text} />
     </div>;
   }
 
@@ -2276,7 +2311,8 @@ function OrderMobileOverview({
         </div>
         <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
           <div className="mb-2 flex items-center gap-2 text-sm font-bold"><PackageCheck className="size-4 text-primary" />{presentation.productOverview}<span className="ml-auto text-xs font-normal text-slate-400">{pickedItems}/{order.items} · {labels.fulfillment[order.fulfillmentStatus]}</span></div>
-          <div className="divide-y divide-slate-100">{order.lines.map(line => <div key={line.id} className="flex min-w-0 items-center gap-2 py-2"><OrderLineImage line={line} className="size-11" /><div className="min-w-0 flex-1 break-words text-xs font-semibold leading-snug">{line.name}</div><span className="shrink-0 text-xs text-slate-500">× {line.quantity}</span></div>)}</div>
+          <div className="divide-y divide-slate-100">{order.lines.slice(0, 2).map(line => <div key={line.id} className="flex min-w-0 items-center gap-2 py-2"><OrderLineImage line={line} className="size-11" /><div className="min-w-0 flex-1 break-words text-xs font-semibold leading-snug">{line.name}</div><span className="shrink-0 text-xs text-slate-500">× {line.quantity}</span></div>)}</div>
+          {order.lines.length > 2 && <p className="mt-2 text-xs text-slate-500">+{order.lines.length - 2} · {presentation.moreProducts}</p>}
         </section>
         <OrderNotesBanner canEditStaffNote={canEditStaffNote} isMutating={isMutating} order={order} text={text} onUpdateStaffNote={onUpdateStaffNote} />
       </div>
@@ -2471,9 +2507,7 @@ function ShipmentReadiness({
                   {check.label}
                 </span>
               </div>
-              <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
-                {check.value}
-              </div>
+
             </>
           );
           const className = cn(
@@ -2482,7 +2516,7 @@ function ShipmentReadiness({
               ? "border-emerald-100 text-emerald-700"
               : "border-amber-100 text-amber-700",
             check.action &&
-              "text-left transition hover:border-primary/30 hover:bg-primary/5",
+              "min-h-11 text-left transition hover:border-primary/30 hover:bg-primary/5",
             check.action && trackingDetailsOpen && "border-primary/30 bg-primary/5"
           );
 
@@ -2820,12 +2854,6 @@ function TrackingDetailsPanel({
       </div>
 
       <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1 md:grid-cols-4">
-        <TrackingFact label={text.common.carrier} value={detail.carrier} />
-        <TrackingFact
-          label={text.orders.tracking.number}
-          value={detail.tracking}
-          mono
-        />
         <TrackingFact label={text.orders.tracking.liveSource} value={detail.status} />
         <TrackingFact
           label={text.orders.tracking.refreshedAt}
@@ -2839,19 +2867,7 @@ function TrackingDetailsPanel({
             ? text.orders.tracking.externalHint
             : text.orders.tracking.noCarrierPortal}
         </div>
-        {detail.trackingUrl && (
-          <Button
-            asChild
-            variant="outline"
-            size="xs"
-            className="h-7 w-full bg-white px-2 sm:w-auto"
-          >
-            <a href={detail.trackingUrl} target="_blank" rel="noreferrer">
-              <ExternalLink className="size-3" />
-              {text.orders.tracking.carrierPortal}
-            </a>
-          </Button>
-        )}
+
       </div>
 
       <div className="mt-1.5 rounded-md border border-cyan-100 bg-white">
@@ -2946,7 +2962,6 @@ function OrderPaymentMethodCard({
   canApproveWalletRefunds,
   canEditPayment,
   canReconcilePayment,
-  compact = false,
   isMutating,
   labels,
   order,
@@ -2958,7 +2973,6 @@ function OrderPaymentMethodCard({
   canApproveWalletRefunds: boolean;
   canEditPayment: boolean;
   canReconcilePayment: boolean;
-  compact?: boolean;
   isMutating: boolean;
   labels: OrderLabels;
   order: AdminOrder;
@@ -2967,6 +2981,11 @@ function OrderPaymentMethodCard({
   onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => Promise<OrderMutationResult>;
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => Promise<OrderMutationResult>;
 }) {
+
+  const requestDiscard = React.useContext(OrderDiscardContext);  const { locale } = useI18n();
+  const presentation = orderPresentationCopy(locale);
+  const [methodEditing, setMethodEditing] = React.useState(false);
+  const [reconciliationInitial, setReconciliationInitial] = React.useState("");
   const [paymentMethodDraft, setPaymentMethodDraft] = React.useState<PaymentMethod>(
     order.paymentMethod
   );
@@ -2985,6 +3004,8 @@ function OrderPaymentMethodCard({
     order.paymentReconciliation.reference
   );
   const [noteDraft, setNoteDraft] = React.useState(order.paymentReconciliation.note);
+  const paymentDraft = JSON.stringify([statusDraft, reconciliationMethodDraft, amountDraft, receivedAtDraft, referenceDraft, noteDraft]);
+  const reconciliationDirty = dialogOpen && paymentDraft !== reconciliationInitial;
   const amountValue = parsePaymentAmountInput(amountDraft);
   const requiresReversalNote = order.paymentStatus === "paid" && statusDraft !== "paid";
   const receivedAtIsValid =
@@ -3000,25 +3021,32 @@ function OrderPaymentMethodCard({
     !isMutating &&
     paymentMethodDraft !== order.paymentMethod;
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!canSave) {
       return;
     }
 
-    onUpdatePaymentMethod(order, paymentMethodDraft);
+    const outcome = await onUpdatePaymentMethod(order, paymentMethodDraft);
+    if (outcome.ok) setMethodEditing(false); else setFormError(outcome.error);
   }
 
   function openReconciliationDialog(nextStatus: PaymentStatus) {
+    setFormError("");
+    const initial = [
+      nextStatus, order.paymentMethod,
+      formatPaymentAmountInput(defaultPaymentReconciliationAmount(order, nextStatus)),
+      toDateTimeLocalInput(order.paymentReconciliation.receivedAt ?? new Date().toISOString()),
+      order.paymentReconciliation.reference, order.paymentReconciliation.note,
+    ];
+    setReconciliationInitial(JSON.stringify(initial));
     setStatusDraft(nextStatus);
     setReconciliationMethodDraft(order.paymentMethod);
     setAmountDraft(
       formatPaymentAmountInput(defaultPaymentReconciliationAmount(order, nextStatus))
     );
-    setReceivedAtDraft(
-      toDateTimeLocalInput(order.paymentReconciliation.receivedAt ?? new Date().toISOString())
-    );
+    setReceivedAtDraft(initial[3]);
     setReferenceDraft(order.paymentReconciliation.reference);
     setNoteDraft(order.paymentReconciliation.note);
     setDialogOpen(true);
@@ -3073,27 +3101,27 @@ function OrderPaymentMethodCard({
     {
       label: text.orders.paymentReceivedAmount,
       value: receivedAmountLabel,
-      show: !compact || order.paymentReconciliation.receivedAmount !== null,
+      show: order.paymentReconciliation.receivedAmount !== null,
     },
     {
       label: text.orders.paymentReceivedBy,
       value: collectorLabel,
-      show: !compact || collectorLabel !== text.common.none,
+      show: collectorLabel !== text.common.none,
     },
     {
       label: text.orders.paymentReceivedAt,
       value: receivedAtLabel,
-      show: !compact || Boolean(order.paymentReconciliation.receivedAt),
+      show: Boolean(order.paymentReconciliation.receivedAt),
     },
     {
       label: text.orders.paymentReference,
       value: order.paymentReconciliation.reference || text.common.none,
-      show: !compact || Boolean(order.paymentReconciliation.reference),
+      show: Boolean(order.paymentReconciliation.reference),
     },
     {
       label: text.orders.paymentNote,
       value: order.paymentReconciliation.note || text.common.none,
-      show: !compact || Boolean(order.paymentReconciliation.note),
+      show: Boolean(order.paymentReconciliation.note),
     },
     {
       label: text.orders.walletRefundPending,
@@ -3109,8 +3137,8 @@ function OrderPaymentMethodCard({
 
   function renderPaymentDialog() {
     return (
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!isMutating && (open || window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?"))) setDialogOpen(open); }}>
-        <DialogContent data-admin-dirty={dialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[520px] rounded-lg bg-white">
+      <Dialog open={dialogOpen} onOpenChange={open => { if (!isMutating) requestDiscard(() => setDialogOpen(open), !open && reconciliationDirty); }}>
+        <DialogContent data-admin-dirty={reconciliationDirty ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.paymentReconciliation}
@@ -3228,7 +3256,7 @@ function OrderPaymentMethodCard({
                 type="button"
                 variant="outline"
                 className="rounded-md"
-                onClick={() => { if (!isMutating && window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setDialogOpen(false); }}
+                onClick={() => { if (!isMutating) requestDiscard(() => setDialogOpen(false), reconciliationDirty); }}
               >
                 {text.common.cancel}
               </Button>
@@ -3245,126 +3273,6 @@ function OrderPaymentMethodCard({
     );
   }
 
-  if (compact) {
-    const primaryAmountLabel =
-      order.paymentStatus === "paid"
-        ? receivedAmountLabel
-        : order.paymentDueAmount > 0
-          ? formatEuro(order.paymentDueAmount)
-          : text.common.none;
-    const primaryAmountTitle =
-      order.paymentStatus === "paid"
-        ? text.orders.paymentReceivedAmount
-        : text.orders.paymentAmountDue;
-    const compactRows = [
-      {
-        label: text.orders.details.paymentMethod,
-        value: labels.paymentMethod[order.paymentMethod],
-        show: true,
-      },
-      {
-        label: text.orders.paymentReceivedBy,
-        value: collectorLabel,
-        show: collectorLabel !== text.common.none,
-      },
-      {
-        label: text.orders.paymentReceivedAt,
-        value: receivedAtLabel,
-        show: Boolean(order.paymentReconciliation.receivedAt),
-      },
-      {
-        label: text.orders.paymentReference,
-        value: order.paymentReconciliation.reference || text.common.none,
-        show: Boolean(order.paymentReconciliation.reference),
-      },
-      {
-        label: text.orders.paymentNote,
-        value: order.paymentReconciliation.note || text.common.none,
-        show: Boolean(order.paymentReconciliation.note),
-      },
-      {
-        label: text.orders.walletRefundPending,
-        value: formatEuro(walletRefundSummary.pendingAmount),
-        show: walletRefundSummary.pendingAmount > 0,
-      },
-      {
-        label: text.orders.walletRefundCredited,
-        value: formatEuro(walletRefundSummary.creditedAmount),
-        show: walletRefundSummary.creditedAmount > 0,
-      },
-    ].filter((row) => row.show);
-
-    return (
-      <section className="rounded-md border border-slate-200 bg-white p-1.5">
-        <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5 text-xs font-black text-slate-900">
-            <CreditCard className="size-3.5 shrink-0 text-primary" />
-            <span className="truncate">{text.orders.paymentReconciliation}</span>
-          </div>
-          <Badge className={paymentBadgeClass(order.paymentStatus)} variant="outline">
-            {labels.payment[order.paymentStatus]}
-          </Badge>
-        </div>
-        <div className="mb-1.5 rounded-md border border-primary/10 bg-primary/5 px-2 py-2">
-          <div className="text-[10px] font-black uppercase leading-none text-primary/70">
-            {primaryAmountTitle}
-          </div>
-          <div className="mt-1 text-lg font-black leading-none text-slate-950">
-            {primaryAmountLabel}
-          </div>
-        </div>
-        <div className="grid gap-1 rounded-md border border-slate-100 bg-slate-50/60 p-1.5">
-          {compactRows.map((row) => (
-            <InfoRow key={row.label} label={row.label} value={row.value} />
-          ))}
-        </div>
-        <OrderWalletRefundsCard
-          compact
-          canApproveWalletRefunds={canApproveWalletRefunds}
-          isMutating={isMutating}
-          order={order}
-          text={text}
-          onApproveWalletRefund={onApproveWalletRefund}
-        />
-        <div className="mt-2 grid gap-1.5">
-          <Button
-            type="button"
-            size="sm"
-            className="w-full rounded-md"
-            disabled={!canReconcilePayment || isMutating}
-            onClick={() => openReconciliationDialog("paid")}
-          >
-            {order.paymentStatus === "paid" ? (
-              <Pencil className="size-3.5" />
-            ) : (
-              <BadgeCheck className="size-3.5" />
-            )}
-            <span className="truncate">
-              {order.paymentStatus === "paid"
-                ? text.orders.modifyPaymentReconciliation
-                : hasSupplementalPaymentDue(order)
-                  ? text.orders.markSupplementPaymentReceived
-                  : text.orders.markPaymentReceived}
-            </span>
-          </Button>
-          {order.paymentStatus === "paid" && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="w-full rounded-md text-amber-700 hover:text-amber-700"
-              disabled={!canReconcilePayment || isMutating}
-              onClick={() => openReconciliationDialog("unpaid")}
-            >
-              <RotateCcw className="size-3.5" />
-              <span className="truncate">{text.orders.undoPaymentReceived}</span>
-            </Button>
-          )}
-        </div>
-        {renderPaymentDialog()}
-      </section>
-    );
-  }
 
   return (
     <section className="rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
@@ -3384,10 +3292,12 @@ function OrderPaymentMethodCard({
           <InfoRow key={row.label} label={row.label} value={row.value} />
         )}
       </div>
+      {formError && <AdminNotice tone="error" message={formError} />}
+      {methodEditing ? (
       <form
         className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
         onSubmit={handleSubmit}
-        data-admin-dirty={paymentMethodDraft !== order.paymentMethod ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
+        data-admin-dirty={methodEditing && paymentMethodDraft !== order.paymentMethod ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
       >
         <label className="min-w-0">
           <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
@@ -3421,7 +3331,9 @@ function OrderPaymentMethodCard({
           ))}
           <span className="truncate">{text.common.saveChanges}</span>
         </AdminActionButton>
-      </form>
+        <Button type="button" variant="ghost" disabled={isMutating} onClick={() => requestDiscard(() => { setMethodEditing(false); setPaymentMethodDraft(order.paymentMethod); }, paymentMethodDraft !== order.paymentMethod)}>{text.common.cancel}</Button>
+      </form>) : canEditPayment ? <Button type="button" variant="outline" size="sm" disabled={isMutating} onClick={() => { setPaymentMethodDraft(order.paymentMethod); setMethodEditing(true); setFormError(""); }}><Pencil className="size-3.5" />{presentation.changeMethod}</Button> : null}
+
       <div className="mt-2 flex flex-wrap gap-2">
         {order.paymentStatus !== "paid" && (
           <Button
@@ -3587,8 +3499,10 @@ function OrderLogisticsCard({
   onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => Promise<OrderMutationResult>;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => Promise<OrderMutationResult>;
 }) {
-  const [carrierDraft, setCarrierDraft] = React.useState<Carrier>(order.carrier);
+
+  const requestDiscard = React.useContext(OrderDiscardContext);  const [carrierDraft, setCarrierDraft] = React.useState<Carrier>(order.carrier);
   const [trackingDraft, setTrackingDraft] = React.useState(order.tracking);
+  const [shippingInitial, setShippingInitial] = React.useState("");
   const [shippingDialogOpen, setShippingDialogOpen] = React.useState(false);
   const [formError, setFormError] = React.useState("");
   const [shippingAmountDraft, setShippingAmountDraft] = React.useState(() =>
@@ -3597,6 +3511,7 @@ function OrderLogisticsCard({
   const [shippingReasonDraft, setShippingReasonDraft] = React.useState("");
   const [shippingNoteDraft, setShippingNoteDraft] = React.useState("");
 
+  const shippingDirty = shippingDialogOpen && JSON.stringify([shippingAmountDraft, shippingReasonDraft, shippingNoteDraft]) !== shippingInitial;
   const pickup = isPickupCarrier(carrierDraft);
   const orderPickup = isPickupCarrier(order.carrier);
   const normalizedTrackingDraft = pickup ? "" : trackingDraft.trim();
@@ -3646,6 +3561,8 @@ function OrderLogisticsCard({
   );
 
   const openShippingDialog = React.useCallback(() => {
+    setFormError("");
+    setShippingInitial(JSON.stringify([formatPaymentAmountInput(shippingAdjustmentSuggestedAmount), needsShippingAdjustment ? text.orders.shippingAdjustmentDefaultReason : "", ""]));
     setShippingAmountDraft(formatPaymentAmountInput(shippingAdjustmentSuggestedAmount));
     setShippingReasonDraft(
       needsShippingAdjustment ? text.orders.shippingAdjustmentDefaultReason : ""
@@ -3713,7 +3630,7 @@ function OrderLogisticsCard({
       <form
         className="mt-1.5 grid gap-1.5 rounded-md border border-slate-100 bg-slate-50 p-1.5 sm:grid-cols-[minmax(160px,0.9fr)_minmax(180px,1.1fr)_auto] sm:items-end"
         onSubmit={handleSubmit}
-        data-admin-dirty={carrierDraft !== order.carrier || trackingDraft !== order.tracking ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
+        data-admin-dirty={hasLogisticsChanges ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
       >
         <label className="min-w-0">
           <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
@@ -3846,8 +3763,8 @@ function OrderLogisticsCard({
           />
         </div>
       )}
-      <Dialog open={shippingDialogOpen} onOpenChange={(open) => { if (!isMutating && (open || window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?"))) setShippingDialogOpen(open); }}>
-        <DialogContent data-admin-dirty={shippingDialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[520px] rounded-lg bg-white">
+      <Dialog open={shippingDialogOpen} onOpenChange={open => { if (!isMutating) requestDiscard(() => setShippingDialogOpen(open), !open && shippingDirty); }}>
+        <DialogContent data-admin-dirty={shippingDirty ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.adjustShipping}
@@ -3924,7 +3841,7 @@ function OrderLogisticsCard({
                 type="button"
                 variant="outline"
                 className="rounded-md"
-                onClick={() => { if (!isMutating && window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setShippingDialogOpen(false); }}
+                onClick={() => { if (!isMutating) requestDiscard(() => setShippingDialogOpen(false), shippingDirty); }}
               >
                 {text.common.cancel}
               </Button>
@@ -3961,7 +3878,8 @@ function OrderLines({
     patch: OrderLineFulfillmentInput
   ) => Promise<OrderMutationResult>;
 }) {
-  const { locale } = useI18n();
+
+  const requestDiscard = React.useContext(OrderDiscardContext);  const { locale } = useI18n();
   const presentation = orderPresentationCopy(locale);
   const copy = (locale.startsWith("en") ? englishUiCopy({ title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }) : locale.startsWith("it") ? { title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }
     : { title: "登记缺货数量", description: "默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。", actual: "实际给货数量", ordered: "订购数量", noShortage: "没有缺货时无需保存，直接打包完成即可。", preview: "少给数量", impact: "保存后登记缺货并生成退款申请，经审批后入账。", complete: "当前等于订购数量，系统默认全给，不需要登记。", reason: "缺货原因", example: "例如：仓库实盘为0，锁货商品不存在。", save: "保存缺货" });
@@ -3970,6 +3888,7 @@ function OrderLines({
   const [actualQuantity, setActualQuantity] = React.useState("0");
   const [reason, setReason] = React.useState("");
 
+  const shortageDirty = Boolean(editingLine && (reason.trim() || actualQuantity !== String(lineEffectivePickedQty(editingLine))));
   if (lines.length === 0) {
     return <EmptyState text={text} />;
   }
@@ -4027,31 +3946,28 @@ function OrderLines({
   return (
     <div className="min-w-0 space-y-3" data-order-lines>
       {canEditLines && <p className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-xs leading-relaxed text-blue-700"><Info className="mt-0.5 size-4 shrink-0" />{presentation.defaultSupply}</p>}
-      <div className="space-y-3 md:hidden">
-        {lines.map(line => <article key={line.id} data-order-line={line.id} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
-          <div className="grid min-w-0 grid-cols-[56px_minmax(0,1fr)] gap-2.5">
-            <OrderLineImage line={line} className="size-14" />
+      <div className="space-y-2 md:hidden">
+        {lines.map(line => <article key={line.id} data-order-line={line.id} className="min-w-0 rounded-lg border border-slate-200 bg-white p-2.5">
+          <div className="grid min-w-0 grid-cols-[48px_minmax(0,1fr)] gap-2.5">
+            <OrderLineImage line={line} className="size-12" />
             <div className="min-w-0">
               <h4 className="break-words text-[13px] font-bold leading-snug text-slate-900">{line.name}</h4>
-              <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{line.sku}</p>
-              <p className="mt-1 break-words text-[11px] text-slate-400">{orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}</p>
               <p className="mt-1 text-xs font-bold text-slate-700">{formatEuro(line.unitPrice)}</p>
             </div>
           </div>
-          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5">
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600"><PackageCheck className="size-3.5 text-primary" />{presentation.actual}<strong className="text-primary">{lineEffectivePickedQty(line)}/{line.quantity}</strong></span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-slate-500"><LockKeyhole className="size-3.5 text-primary" />{text.orders.lines.reserved} {line.reservedQty}</span>
-            {canEditLines && order && onUpdateLineFulfillment && <Button type="button" size="xs" variant="outline" className="ml-auto h-9 shrink-0 bg-white px-2 text-xs" disabled={isMutating} onClick={() => openEditor(line)}>{(locale.startsWith("en") ? "Record shortage" : locale.startsWith("it") ? "Registra mancanza" : "登记缺货")}</Button>}
+            {canEditLines && order && onUpdateLineFulfillment && <Button type="button" size="xs" variant="outline" className="ml-auto min-h-11 shrink-0 bg-white px-2 text-xs" disabled={isMutating} onClick={() => openEditor(line)}>{(locale.startsWith("en") ? "Record shortage" : locale.startsWith("it") ? "Registra mancanza" : "登记缺货")}</Button>}
           </div>
           {(line.cancelledQty > 0 || line.fulfilledQty > 0) && <div className="mt-2"><Badge className={orderLineOperationalBadgeClass(line)}>{orderLineOperationalLabel(line, locale)}</Badge></div>}
-          <details className="mt-2 text-xs text-slate-500">
-            <summary className="flex min-h-9 cursor-pointer items-center gap-1.5 font-semibold"><ChevronDown className="size-3.5" />{presentation.quantityDetails}</summary>
+          <details className="mt-1 text-xs text-slate-500">
+            <summary className="flex min-h-11 cursor-pointer items-center gap-1.5 font-semibold"><ChevronDown className="size-3.5" />{presentation.itemDetails}</summary>
             <div className="mt-1 grid grid-cols-2 gap-1.5">
-              <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
-              <MobileFact label={presentation.actual} value={`${lineEffectivePickedQty(line)}`} />
+              <MobileFact label="SKU" value={line.sku} />
+              <MobileFact label={text.orders.lines.batch} value={`${orderValueLabel(text, line.category)} · ${line.batchCode || text.common.none}`} />
               <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
-              <MobileFact label={text.orders.lines.fulfilled} value={`${line.fulfilledQty}`} />
-              <MobileFact label={presentation.shortage} value={`${line.cancelledQty}`} />
+              {line.fulfilledQty > 0 && <MobileFact label={text.orders.lines.fulfilled} value={`${line.fulfilledQty}`} />}
+              {line.cancelledQty > 0 && <MobileFact label={presentation.shortage} value={`${line.cancelledQty}`} />}
             </div>
           </details>
           {renderRefundInfo(line)}
@@ -4075,18 +3991,18 @@ function OrderLines({
             {lines.map(line => <TableRow key={line.id}>
               <TableCell className="whitespace-normal align-top"><div className="flex min-w-0 items-start gap-2"><OrderLineImage line={line} className="size-12" /><div className="min-w-0"><div className="break-words font-bold leading-snug text-slate-900">{line.name}</div><div className="mt-1 break-all font-mono text-[11px] text-slate-500">{line.sku}</div><div className="mt-1 break-words text-[11px] text-slate-400">{orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}</div>{renderRefundInfo(line)}</div></div></TableCell>
               <TableCell className="text-center align-top">{line.quantity}</TableCell>
-              <TableCell className="text-center align-top font-bold text-primary">{lineEffectivePickedQty(line)}/{line.quantity}</TableCell>
+              <TableCell className="text-center align-top font-bold text-primary">{lineEffectivePickedQty(line)}</TableCell>
               <TableCell className="text-center align-top">{line.reservedQty}</TableCell>
-              <TableCell className="text-center align-top text-slate-500">{line.fulfilledQty}</TableCell>
-              <TableCell className={cn("text-center align-top", line.cancelledQty > 0 ? "font-bold text-amber-700" : "text-slate-400")}>{line.cancelledQty}</TableCell>
+              <TableCell className="text-center align-top text-slate-500">{line.fulfilledQty || "—"}</TableCell>
+              <TableCell className={cn("text-center align-top", line.cancelledQty > 0 ? "font-bold text-amber-700" : "text-slate-400")}>{line.cancelledQty || "—"}</TableCell>
               <TableCell className="text-right align-top font-semibold">{formatEuro(line.unitPrice)}</TableCell>
               <TableCell className="text-right align-top">{canEditLines && order && onUpdateLineFulfillment ? <Button type="button" size="xs" variant="outline" className="h-auto min-h-9 whitespace-normal bg-white px-2 text-xs" disabled={isMutating} onClick={() => openEditor(line)}>{(locale.startsWith("en") ? "Shortage" : locale.startsWith("it") ? "Mancanza" : "登记缺货")}</Button> : <span className="text-[11px] text-slate-400">{orderLineOperationalLabel(line, locale)}</span>}</TableCell>
             </TableRow>)}
           </TableBody>
         </Table>
       </div>
-      <Dialog open={editingLine !== null} onOpenChange={(open) => { if (!open && !isMutating && window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setEditingLine(null); }}>
-        <DialogContent data-admin-dirty={editingLine && (reason.trim() || actualQuantity !== String(lineEffectivePickedQty(editingLine))) ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
+      <Dialog open={editingLine !== null} onOpenChange={open => { if (!open && !isMutating) requestDiscard(() => setEditingLine(null), shortageDirty); }}>
+        <DialogContent data-admin-dirty={shortageDirty ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-black">{copy.title}</DialogTitle>
             <DialogDescription>
@@ -4132,7 +4048,7 @@ function OrderLines({
           ) : null}
         </DialogBody>
         <DialogFooter>
-            <Button type="button" variant="outline" disabled={isMutating} onClick={() => { if (window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setEditingLine(null); }}>
+            <Button type="button" variant="outline" disabled={isMutating} onClick={() => requestDiscard(() => setEditingLine(null), shortageDirty)}>
               {text.common.cancel}
             </Button>
             <AdminActionButton pending={isMutating} type="button" onClick={submitEditor} disabled={!canSaveShortage}>
@@ -4514,52 +4430,6 @@ function stripGeneratedOperationPrefix(value: string, prefixes: string[]) {
   return prefix ? normalized.slice(prefix.length).trim() : normalized;
 }
 
-function printOrderPackingSlip(
-  order: AdminOrder,
-  labels: OrderLabels,
-  text: AdminText
-) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const printWindow = window.open("", "_blank", "width=900,height=1200");
-
-  if (!printWindow) {
-    return;
-  }
-
-  printWindow.opener = null;
-  printWindow.document.open();
-  printWindow.document.write(buildOrderPackingSlipHtml(order, labels, text));
-  printWindow.document.close();
-  printWindow.focus();
-  void waitForPrintAssets(printWindow).then(() => {
-    printWindow.print();
-  });
-}
-
-function waitForPrintAssets(printWindow: Window) {
-  const images = Array.from(printWindow.document.images);
-  const imagePromises = images.map(
-    (image) =>
-      new Promise<void>((resolve) => {
-        if (image.complete) {
-          resolve();
-          return;
-        }
-
-        image.onload = () => resolve();
-        image.onerror = () => resolve();
-      })
-  );
-  const timeout = new Promise<void>((resolve) => {
-    window.setTimeout(resolve, 1400);
-  });
-
-  return Promise.race([Promise.all(imagePromises).then(() => undefined), timeout]);
-}
-
 function buildOrderPackingSlipHtml(
   order: AdminOrder,
   labels: OrderLabels,
@@ -4617,6 +4487,7 @@ function buildOrderPackingSlipHtml(
 <html lang="${escapeHtml(document.documentElement.lang || "zh")}">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
   <style>
     @page { size: A4; margin: 12mm; }
